@@ -1,26 +1,30 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request, send_file
 import json
-from contract_scanner import load_abi, load_claim_indices
-from web3 import Web3
-from config import RPC_URL, CONTRACT_ADDRESS
+import csv
 
 app = Flask(__name__)
 
-@app.route("/")
-def index():
-    web3 = Web3(Web3.HTTPProvider(RPC_URL))
-    abi = load_abi()
-    contract = web3.eth.contract(address=Web3.to_checksum_address(CONTRACT_ADDRESS), abi=abi)
-    claims = load_claim_indices()
-    results = []
+# Load airdrop data from file
+with open("airdrop_results.json") as f:
+    data = json.load(f)
 
-    for wallet, index in claims.items():
-        claimed = contract.functions.isClaimed(index).call()
-        status = "Already Claimed" if claimed else "Eligible to Claim"
-        results.append({"wallet": wallet, "index": index, "status": status})
+@app.route("/", methods=["GET"])
+def dashboard():
+    query = request.args.get("search")
+    results = data
+
+    if query:
+        query = query.strip().lower()
+        results = [row for row in data if query in row["wallet"].lower()]
 
     return render_template("dashboard.html", results=results)
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+@app.route("/download")
+def download():
+    # Write filtered or full data to CSV for download
+    with open("airdrop_data.csv", "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["wallet", "index", "status"])
+        writer.writeheader()
+        writer.writerows(data)
 
+    return send_file("airdrop_data.csv", as_attachment=True)
